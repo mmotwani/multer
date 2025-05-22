@@ -98,6 +98,11 @@ impl<'r> Field<'r> {
         &self.headers
     }
 
+    // Get bool indicating whether the stream has been fully consumed.
+    pub fn done(&self) -> bool {
+        self.done
+    }
+
     /// Get the full data of the field as [`Bytes`].
     ///
     /// # Examples
