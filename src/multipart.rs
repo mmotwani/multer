@@ -459,6 +459,7 @@ impl<'r> Multipart<'r> {
 
     /// Returns the current stream position
     pub fn current_pos(&self) -> u64 {
-        self.buffer.stream_size_counter
+        let lock: spin::mutex::SpinMutexGuard<'_, MultipartState<'r>> = self.state.lock();
+        lock.buffer.stream_size_counter
     }
 }
