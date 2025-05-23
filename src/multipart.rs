@@ -456,4 +456,9 @@ impl<'r> Multipart<'r> {
     pub async fn next_field_with_idx(&mut self) -> Result<Option<(usize, Field<'r>)>> {
         self.next_field().await.map(|f| f.map(|field| (field.index(), field)))
     }
+
+    /// Returns the current stream position
+    pub fn current_pos(&self) -> u64 {
+        self.buffer.stream_size_counter
+    }
 }
