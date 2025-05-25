@@ -81,7 +81,10 @@ impl<'r> StreamBuffer<'r> {
     }
 
     pub fn read_to(&mut self, pattern: &[u8]) -> Option<Bytes> {
-        memchr::memmem::find(&self.buf, pattern).map(|idx| self.buf.split_to(idx).freeze())
+        memchr::memmem::find(&self.buf, pattern).map(|idx| {
+            self.total_read_len += idx as u64;
+            self.buf.split_to(idx).freeze()
+        })
     }
 
     pub fn advance_past_transport_padding(&mut self) -> bool {
@@ -151,7 +154,7 @@ impl<'r> StreamBuffer<'r> {
 
                         match memchr::memmem::find(boundary_deriv.as_bytes(), &self.buf[idx..]) {
                             Some(_) => {
-                                self.total_read_len += idx as u64 + constants::CRLF.len() as u64;
+                                self.total_read_len += idx as u64;
                                 let bytes = self.buf.split_to(idx).freeze();
 
                                 match bytes.is_empty() {
