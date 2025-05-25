@@ -13,6 +13,7 @@ pub(crate) struct StreamBuffer<'r> {
     pub(crate) stream: Pin<Box<dyn Stream<Item = Result<Bytes, crate::Error>> + Send + 'r>>,
     pub(crate) whole_stream_size_limit: u64,
     pub(crate) stream_size_counter: u64,
+    pub(crate) total_read_len: u64,
 }
 
 impl<'r> StreamBuffer<'r> {
@@ -26,6 +27,7 @@ impl<'r> StreamBuffer<'r> {
             stream: Box::pin(stream),
             whole_stream_size_limit,
             stream_size_counter: 0,
+            total_read_len: 0,
         }
     }
 
@@ -59,6 +61,7 @@ impl<'r> StreamBuffer<'r> {
 
     pub fn read_exact(&mut self, size: usize) -> Option<Bytes> {
         if size <= self.buf.len() {
+            self.total_read_len += size as u64;
             Some(self.buf.split_to(size).freeze())
         } else {
             None
@@ -70,7 +73,11 @@ impl<'r> StreamBuffer<'r> {
     }
 
     pub fn read_until(&mut self, pattern: &[u8]) -> Option<Bytes> {
-        memchr::memmem::find(&self.buf, pattern).map(|idx| self.buf.split_to(idx + pattern.len()).freeze())
+        memchr::memmem::find(&self.buf, pattern).map(|idx| {
+            let size = idx as u64 + pattern.len() as u64;
+            self.total_read_len += size;
+            self.buf.split_to(size as usize).freeze()
+        })
     }
 
     pub fn read_to(&mut self, pattern: &[u8]) -> Option<Bytes> {
@@ -80,10 +87,12 @@ impl<'r> StreamBuffer<'r> {
     pub fn advance_past_transport_padding(&mut self) -> bool {
         match self.buf.iter().position(|b| *b != b' ' && *b != b'\t') {
             Some(pos) => {
+                self.total_read_len += pos as u64;
                 self.buf.advance(pos);
                 true
             }
             None => {
+                self.total_read_len += self.buf.len() as u64;
                 self.buf.clear();
                 false
             }
@@ -111,6 +120,7 @@ impl<'r> StreamBuffer<'r> {
         match memchr::memmem::find(&self.buf, boundary_deriv.as_bytes()) {
             Some(idx) => {
                 trace!("new field found at {}", idx);
+                self.total_read_len += idx as u64 + constants::CRLF.len() as u64;
                 let bytes = self.buf.split_to(idx).freeze();
 
                 // discard \r\n.
@@ -141,6 +151,7 @@ impl<'r> StreamBuffer<'r> {
 
                         match memchr::memmem::find(boundary_deriv.as_bytes(), &self.buf[idx..]) {
                             Some(_) => {
+                                self.total_read_len += idx as u64 + constants::CRLF.len() as u64;
                                 let bytes = self.buf.split_to(idx).freeze();
 
                                 match bytes.is_empty() {
@@ -158,6 +169,7 @@ impl<'r> StreamBuffer<'r> {
     }
 
     pub fn read_full_buf(&mut self) -> Bytes {
+        self.total_read_len += self.buf.len() as u64;
         self.buf.split_to(self.buf.len()).freeze()
     }
 }
